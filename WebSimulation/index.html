@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CPU Scheduling Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      padding: 20px;
+      color: #333;
+    }
+    h1, h3 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    .container {
+      max-width: 950px;
+      margin: auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    .btn {
+      padding: 10px 20px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .btn:hover {
+      background: #2980b9;
+    }
+    input[type=number], select {
+      padding: 5px;
+      margin: 5px;
+    }
+    table, th, td {
+      border: 1px solid #aaa;
+      border-collapse: collapse;
+      padding: 8px;
+      text-align: center;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+    }
+    .gantt {
+      background: #eee;
+      padding: 10px;
+      font-family: monospace;
+      margin-top: 10px;
+    }
+    .process-box {
+      display: inline-block;
+      margin: 2px;
+      padding: 8px;
+      background: #2ecc71;
+      color: white;
+      border-radius: 4px;
+      min-width: 40px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>CPU Scheduling Algorithm Simulator</h1>
+
+    <label>Select Scheduling Algorithm:
+      <select id="algorithm">
+        <option value="rr">Round Robin</option>
+        <option value="mlq">Multi-Level Queue</option>
+      </select>
+    </label>
+    <label style="margin-left: 20px;">Number of Processes:
+      <input type="number" id="numProcs" min="1" max="10" value="4">
+    </label>
+    <label style="margin-left: 20px;">Time Quantum:
+      <input type="number" id="timeQuantum" value="3">
+    </label>
+    <button class="btn" onclick="generateInputs()">Generate Input Table</button>
+
+    <div id="inputTable"></div>
+    <div>
+      <button class="btn" id="runButton" style="display:none;" onclick="runSimulation()">Run Simulation</button>
+    </div>
+
+    <div class="output">
+      <h3>Gantt Chart</h3>
+      <div id="ganttChart" class="gantt"></div>
+      <h3>Results</h3>
+      <div id="resultTable"></div>
+      <h3>Comparison</h3>
+      <div id="comparison"></div>
+    </div>
+  </div>
+
+  <script>
+    function generateInputs() {
+      const n = document.getElementById("numProcs").value;
+      let html = '<table><tr><th>PID</th><th>Arrival Time</th><th>Burst Time</th><th>Priority (1-10)</th></tr>';
+      for (let i = 0; i < n; i++) {
+        html += `<tr>
+          <td>P${i+1}</td>
+          <td><input type="number" id="at${i}" min="0" value="${i}"></td>
+          <td><input type="number" id="bt${i}" min="1" value="5"></td>
+          <td><input type="number" id="pr${i}" min="1" max="10" value="${i < n/2 ? 2 : 6}"></td>
+        </tr>`;
+      }
+      html += '</table>';
+      document.getElementById("inputTable").innerHTML = html;
+      document.getElementById("runButton").style.display = 'inline-block';
+    }
+
+    function runSimulation() {
+      const n = parseInt(document.getElementById("numProcs").value);
+      for (let i = 0; i < n; i++) {
+        if (!document.getElementById(`at${i}`) || !document.getElementById(`bt${i}`) || !document.getElementById(`pr${i}`)) {
+          alert("Please generate the input table first.");
+          return;
+        }
+      }
+
+      const algo = document.getElementById("algorithm").value;
+      const tq = parseInt(document.getElementById("timeQuantum").value);
+      let processes = [];
+
+      for (let i = 0; i < n; i++) {
+        processes.push({
+          pid: `P${i+1}`,
+          at: parseInt(document.getElementById(`at${i}`).value),
+          bt: parseInt(document.getElementById(`bt${i}`).value),
+          pr: parseInt(document.getElementById(`pr${i}`).value),
+          rt: parseInt(document.getElementById(`bt${i}`).value)
+        });
+      }
+
+      let gantt = [], all = [], time = 0;
+      if (algo === "rr") {
+        let q = [], i = 0, done = 0;
+        processes.sort((a,b) => a.at - b.at);
+        while (done < processes.length) {
+          while (i < processes.length && processes[i].at <= time) q.push(processes[i++]);
+          if (q.length === 0) { time++; continue; }
+          const p = q.shift();
+          let runTime = Math.min(tq, p.rt);
+          gantt.push({pid: p.pid, time: runTime});
+          time += runTime;
+          p.rt -= runTime;
+          while (i < processes.length && processes[i].at <= time) q.push(processes[i++]);
+          if (p.rt > 0) q.push(p);
+          else {
+            p.ct = time;
+            p.tat = p.ct - p.at;
+            p.wt = p.tat - p.bt;
+            done++;
+          }
+        }
+        all = processes;
+      } else {
+        const highQ = processes.filter(p => p.pr <= 3).sort((a,b) => a.at - b.at);
+        const lowQ = processes.filter(p => p.pr > 3).sort((a,b) => a.at - b.at);
+
+        let q = [], i = 0, done = 0;
+        while (done < highQ.length) {
+          while (i < highQ.length && highQ[i].at <= time) q.push(highQ[i++]);
+          if (q.length === 0) { time++; continue; }
+          const p = q.shift();
+          let runTime = Math.min(tq, p.rt);
+          gantt.push({pid: p.pid, time: runTime});
+          time += runTime;
+          p.rt -= runTime;
+          while (i < highQ.length && highQ[i].at <= time) q.push(highQ[i++]);
+          if (p.rt > 0) q.push(p);
+          else {
+            p.ct = time;
+            p.tat = p.ct - p.at;
+            p.wt = p.tat - p.bt;
+            done++;
+          }
+        }
+
+        for (let p of lowQ) {
+          if (time < p.at) time = p.at;
+          gantt.push({pid: p.pid, time: p.bt});
+          time += p.bt;
+          p.ct = time;
+          p.tat = p.ct - p.at;
+          p.wt = p.tat - p.bt;
+        }
+
+        all = [...highQ, ...lowQ];
+      }
+
+      let resultHTML = `<table><tr><th>PID</th><th>AT</th><th>BT</th><th>PR</th><th>CT</th><th>TAT</th><th>WT</th></tr>`;
+      for (let p of all) {
+        resultHTML += `<tr><td>${p.pid}</td><td>${p.at}</td><td>${p.bt}</td><td>${p.pr}</td><td>${p.ct}</td><td>${p.tat}</td><td>${p.wt}</td></tr>`;
+      }
+      resultHTML += '</table>';
+      document.getElementById("resultTable").innerHTML = resultHTML;
+
+      let ganttHTML = "";
+      for (let g of gantt) {
+        ganttHTML += `<div class='process-box'>${g.pid}</div>`;
+      }
+      document.getElementById("ganttChart").innerHTML = ganttHTML;
+
+      document.getElementById("comparison").innerHTML = `<p><b>Note:</b> Round Robin provides fairness using time quanta, ideal for time-sharing systems. Multi-Level Queue classifies processes and handles them based on priority, often reducing response time for critical tasks.</p>`;
+    }
+  </script>
+</body>
+</html>
